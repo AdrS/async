@@ -1,4 +1,4 @@
-import os, hashlib, re, glob, time
+import os, hashlib, re, glob, time, errno, shutil
 def logError(message):
 	print "Error: %s" % (message,)
 def removeBashComment(s):
@@ -18,6 +18,10 @@ def inDirectory(f, d):
 	return os.path.commonprefix([f,d]) == d and f != d
 def fixPath(path):
 	return os.path.normcase(os.path.realpath(os.path.expanduser(path)))
+def ensureDirectoryExists(d):
+	try: os.makedirs(d)
+	except OSError as exception:
+		if exception.errno != errno.EEXIST: raiser
 def createIndex(fileList):
 	'''Takes list of files to create index of, and name of index.
 	The name of each file (if it exists), its md5 sum, and last
@@ -65,7 +69,9 @@ def readIndex(file):
 			#day of month, space, hour:minutei:sec, space, year
 			$""",re.VERBOSE)
 	for l in [i for i in[removeBashComment(i) for i in s.split('\n')]if i]:
-		if len(l) < 59: continue 
+		if len(l) < 59: 
+			logError("invalid entry \"%s\"" % l)
+			continue
 		sum = l[:32]	#get hash sum
 		ts = l[33:57]	#timestamp
 		if not (sumRe.match(sum) and tsRe.match(ts)):
@@ -112,9 +118,11 @@ def readPatternList(file):
 def getFileList(patterns, rootdir = os.getcwd()):
 	'''Takes a list of patterns and optionally the root directory to look in
 	and returns list of files that match and are in rootdir (or a subdir)
-	if rootdir is invalid (ex: file not dir), cwd is used'''
+	if rootdir is invalid (ex: file not dir), cwd is used. The list of files
+	returned is of their relative paths.'''
 	cwd = os.getcwd()	#save for later
-	if not os.path.isdir(fixPath(rootdir)):
+	rootdir = fixPath(rootdir)
+	if not os.path.isdir(rootdir):
 		rootdir = cwd 
 	else: os.chdir(rootdir)
 	list = []
@@ -129,18 +137,38 @@ def getFileList(patterns, rootdir = os.getcwd()):
 		elif os.path.isdir(f):
 			list.extend([os.path.join(f,i) for i in os.listdir(f)])
 		else:
-			ret[f] = 1 #using dictionary prevents duplicate entries
+			ret[f[len(rootdir)+1:]] = 1 #using dictionary prevents duplicate entries (also convert from absolute to relative path)
 	os.chdir(cwd)
 	return ret.keys()
-#def copyFileToDirectory(
+def copyFilesToDirectory(fl, d):
+	'''takes a list of file and copies them to the directory specified.
+	metadata, such as modification time is preserved (mostly). Returns
+	the number of files copied, or None if invalid destination given'''
+	filesCopied = 0;
+	try: ensureDirectoryExists(d)
+	except OSError:
+		logError("could not ensure destination \"%s\" exists." % d)
+		return None
+	for f in fl:
+		if os.path.isdir(f): continue #ignore directories
+		e = os.path.join(d, os.path.split(f)[0])
+		try: ensureDirectoryExists(e)
+		except OSError:
+			logError("could not ensure directory \"%s\" exists" % e)
+			continue
+		try: shutil.copy2(f,e)
+		except: logError("could not copy file \"%s\" to \"%s\"" % (f,e))
+		else: filesCopied += 1
+	return filesCopied
 '''
 readPatternList and getFileList could be changed to accept different patterns
 for now they are fine, but... they are not quite what I was hoping for
 I am not sure how portable the timestamp regex is, and it could be tested more
 a filename regular expression could also be of use
 '''
-if __name__ == "__main__":#have to figure out best system for patterns
-	path = ".sync_index"
+if __name__ == "__main__":
+	path = "/home/adrian/backup/.sync_index"
+	dest = '/home/adrian/backup'
 	pl = readPatternList(".sync_pattern")
 	if pl:
 		fl = getFileList(pl)
@@ -150,13 +178,22 @@ if __name__ == "__main__":#have to figure out best system for patterns
 				print "checking for changed files"
 				cf = findChangedFiles(fl,db)
 #				for f in cf: print f
-				print "updating index %d new, %d modified, \
-					%d deleted/moved" % (cf[1],cf[2],cf[3])
+				print "updating index %d new, %d modified, %d deleted/moved?" % (cf[1],cf[2],cf[3])
 				updateIndex(cf[0],db)
+				cf = cf[0]
 			else:
 				print "creating index"
 				db = createIndex(fl)
-			print "writing index"
-			writeIndex(db,path)
-		else: logError("could not get file list")
+				cf = fl
+			if len(cf) == 0:
+				print "no modified files to copy"
+				sys.exit(0)
+			sc = copyFilesToDirectory(cf,dest)
+			if sc:
+				print "copied %d/%d files" % (int(sc),len(cf))
+				print "writing index"
+				writeIndex(db,path)
+			else:
+				print "could not copy any of %d files" % len(cf)
+		else: logError("could not get list or no files match patterns")
 	else: logError("could not read list")

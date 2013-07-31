@@ -1,6 +1,35 @@
-import os, hashlib, re, glob, time, errno, shutil
+"""Directory syncer
+Usage: python v2.py [OPTIONS] SOURCE DESTINATION
+  Reads a list of shell patterns and finds all files in directory
+SOURCE that match the pattern. If timestamps of files are different from
+those in the index file, the file is copied to the directory DESTINATION.
+  SOURCE defaults to the current working directory.
+  DESTINATION must be specified.
+  If an index file in not given the program will look for the file
+'.sync_index' in DESTINATION. If it is not present all files will be 
+copied and the file will be created.
+  If a pattern file is not specified, the program will look for the
+file '.sync_pattern' in SOURCE and if that is not found, all files will
+'match' pattern.
+
+Options:
+ -i ..., --index=...	specify name of file that stores file information
+ -p ..., --pattern=...	specify name of file that has patterns to follow
+ -h, --help		show this help message
+ -v, --verbose		explain what is being done
+ -s			show a summary of program results
+ -r			hide errors messages
+"""
+__author__ = "Adrian Stoll"
+__date__ = "Wed Jul 31 19:35:00 2013"
+__version__ = "Version 1.0"
+import os, hashlib, re, glob, time, errno, shutil, sys, getopt
 def logError(message):
-	print "Error: %s" % (message,)
+	if not repress:
+		sys.stderr.write("Error: %s\n" % (message,))
+def printM(message):
+	if verbose:
+		sys.stdout.write("%s\n" % message)
 def removeBashComment(s):
 	'Takes a string and returns a string with bash comments removed'
 	if '#' in s: return s[:s.index('#')].strip()
@@ -160,40 +189,88 @@ def copyFilesToDirectory(fl, d):
 		except: logError("could not copy file \"%s\" to \"%s\"" % (f,e))
 		else: filesCopied += 1
 	return filesCopied
-'''
-readPatternList and getFileList could be changed to accept different patterns
-for now they are fine, but... they are not quite what I was hoping for
-I am not sure how portable the timestamp regex is, and it could be tested more
-a filename regular expression could also be of use
-'''
+def usage():
+	print __doc__
+def main(argv):
+	flags, longFlags  = ("i:p:hvsr", ["index=","pattern=","help","verbose"])
+	index, pattern = ("","")
+	global verbose
+	global repress
+	verbose = 0
+	repress = 0
+	summary = 0;
+	sourceDir, destDir = (os.getcwd(),"")
+	pl = []
+	new, modified, removed = (0,0,0)
+	try:
+		opts, args = getopt.getopt(argv,flags,longFlags)
+	except getopt.GetoptError:
+		usage()
+		sys.exit(2)
+	for opt, arg in opts:
+#		print "opt = %s, arg = %s" % (opt, arg)
+		if opt in ("-i","--index"):
+			index = arg
+		elif opt in ("-p","--pattern"):
+			pattern = arg
+		elif opt in ("-h", "--help"):
+			usage()
+			sys.exit(0)
+		elif opt in ("-v","--verbose"):
+			verbose = 1
+		elif opt == "-s":
+			summary = 1
+		elif opt == "-r":
+			repress = 1
+	al = len(args)
+	if al == 0:
+		logError("no destination specified... aborting")
+		sys.exit(2)
+	elif al == 1:
+		destDir = args[0]
+	elif al == 2:
+		sourceDir = args[0]
+		destDir = args[1]
+	else:
+		logError("to many paramaters... aborting")
+		sys.exit(2)
+	if not destDir:
+		logError("no destination specified... aborting")
+		sys.exit(2)
+	elif destDir == sourceDir:
+		logError("source and destination directory cannot be the same")
+		sys.exit(2)
+	if pattern: pl = readPatternList(pattern)
+	if not pl: pl = ["*"]	#default to everything
+	#print pl
+	if not os.path.isdir(sourceDir):
+		logError("source \"%s\" is not a directory" % sourceDir)
+		sys.exit(2)
+	print sourceDir
+	fl = getFileList(pl,sourceDir)
+	if not fl:
+		print "not files mathcing pattern(s)"
+		sys.exit()
+	db = readIndex(index)
+	if db:
+		print "checking for modified files"
+		cf = findChangedFiles(fl,db)
+		new, modifed, removed = cf[1:]
+		print "updating index"
+		cf = cf[0]
+		updateIndex(cf,db)
+	else:
+		print "creating index"
+		db = createIndex(fl)
+		cf = fl
+		new = len(fl)
+	if len(cf) == 0:
+		print "no modified or added files"
+		sys.exit()
+	numC = copyFilesToDirectory(cf,destDir)
+	print "%d new, %d modified, %d deleted/moved?" % (new,modified,removed)
+	print "%d/%d copied" % (numC,new+modified)
+	print "writing index"
+	writeIndex(db,index)
 if __name__ == "__main__":
-	path = "/home/adrian/backup/.sync_index"
-	dest = '/home/adrian/backup'
-	pl = readPatternList(".sync_pattern")
-	if pl:
-		fl = getFileList(pl)
-		if fl:
-			db = readIndex(path)
-			if db:
-				print "checking for changed files"
-				cf = findChangedFiles(fl,db)
-#				for f in cf: print f
-				print "updating index %d new, %d modified, %d deleted/moved?" % (cf[1],cf[2],cf[3])
-				updateIndex(cf[0],db)
-				cf = cf[0]
-			else:
-				print "creating index"
-				db = createIndex(fl)
-				cf = fl
-			if len(cf) == 0:
-				print "no modified files to copy"
-				sys.exit(0)
-			sc = copyFilesToDirectory(cf,dest)
-			if sc:
-				print "copied %d/%d files" % (int(sc),len(cf))
-				print "writing index"
-				writeIndex(db,path)
-			else:
-				print "could not copy any of %d files" % len(cf)
-		else: logError("could not get list or no files match patterns")
-	else: logError("could not read list")
+	main(sys.argv[1:])

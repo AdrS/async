@@ -174,6 +174,7 @@ def copyFilesToDirectory(fl, d):
 	metadata, such as modification time is preserved (mostly). Returns
 	the number of files copied, or None if invalid destination given'''
 	filesCopied = 0;
+	d = fixPath(d)
 	try: ensureDirectoryExists(d)
 	except OSError:
 		logError("could not ensure destination \"%s\" exists." % d)
@@ -240,37 +241,41 @@ def main(argv):
 	elif destDir == sourceDir:
 		logError("source and destination directory cannot be the same")
 		sys.exit(2)
-	if pattern: pl = readPatternList(pattern)
+	if not pattern: pattern = os.path.join(sourceDir,".sync_pattern")
+	pl = readPatternList(pattern)
 	if not pl: pl = ["*"]	#default to everything
 	#print pl
 	if not os.path.isdir(sourceDir):
 		logError("source \"%s\" is not a directory" % sourceDir)
 		sys.exit(2)
-	print sourceDir
+	#print sourceDir
 	fl = getFileList(pl,sourceDir)
 	if not fl:
-		print "not files mathcing pattern(s)"
+		printM("not files mathcing pattern(s)")
 		sys.exit()
+	if not index:
+		index = os.path.join(destDir,".sync_index")
 	db = readIndex(index)
 	if db:
-		print "checking for modified files"
+		printM("checking for modified files")
 		cf = findChangedFiles(fl,db)
 		new, modifed, removed = cf[1:]
-		print "updating index"
+		printM("updating index")
 		cf = cf[0]
 		updateIndex(cf,db)
 	else:
-		print "creating index"
+		printM("creating index")
 		db = createIndex(fl)
 		cf = fl
 		new = len(fl)
 	if len(cf) == 0:
-		print "no modified or added files"
+		printM("no modified or added files")
 		sys.exit()
 	numC = copyFilesToDirectory(cf,destDir)
-	print "%d new, %d modified, %d deleted/moved?" % (new,modified,removed)
-	print "%d/%d copied" % (numC,new+modified)
-	print "writing index"
+	if summary or verbose:
+		print "%d new, %d modified, %d removed" % (new,modified,removed)
+		print "%d/%d copied" % (numC,new+modified)
+	printM("writing index")
 	writeIndex(db,index)
 if __name__ == "__main__":
 	main(sys.argv[1:])

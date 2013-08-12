@@ -4,7 +4,7 @@ Usage: python async.py [OPTIONS] [SOURCE] DESTINATION
 SOURCE that match the pattern. If timestamps of files are different from
 those in the index file, the file is copied to the directory DESTINATION.
   SOURCE defaults to the current working directory.
-  DESTINATION must be specified.
+  DESTINATION must be specified. Usage is printed if it is not.
   If an index file in not given the program will look for the file
 '.sync_index' in DESTINATION. If it is not present all files will be 
 copied and the file will be created.
@@ -153,7 +153,7 @@ def getFileList(patterns):
 	ret = {}
 	for p in patterns:
 		files.extend(glob.glob(fixPath(p)))
-	cwd = os.getcwd()
+	cwd = fixPath(os.getcwd())
 	for f in files:
 		f = fixPath(f)
 		if not inDirectory(f,cwd):
@@ -221,8 +221,8 @@ def main(argv):
 			repress = 1
 	al = len(args)
 	if al == 0:
-		logError("no destination specified... aborting")
-		sys.exit(2)
+		usage()
+		sys.exit(0)
 	elif al == 1:
 		destDir = args[0]
 	elif al == 2:
@@ -235,6 +235,7 @@ def main(argv):
 		logError("source \"%s\" is not a directory" % sourceDir)
 		sys.exit(2)
 	sourceDir = fixPath(sourceDir)
+	destDir = fixPath(destDir)
 	if not destDir:
 		logError("no destination specified... aborting")
 		sys.exit(2)

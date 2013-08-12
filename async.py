@@ -21,8 +21,8 @@ Options:
  -r			hide errors messages
 """
 __author__ = "Adrian Stoll"
-__date__ = "Wed Jul 31 19:35:00 2013"
-__version__ = "Version 1.0"
+__date__ = "Mon Aug 11 13:57:00 2013"
+__version__ = "Version 1.1"
 import os, hashlib, re, glob, time, errno, shutil, sys, getopt
 import code
 def logError(message):
@@ -257,10 +257,11 @@ def main(argv):
 	if db:
 		printM("checking for modified files")
 		cf = findChangedFiles(fl,db)
-		new, modifed, removed = cf[1:]
-		printM("updating index")
+		new, modified, removed = cf[1:]
 		cf = cf[0]
-		updateIndex(cf,db)
+		if new or modified:
+			printM("updating index")
+			updateIndex(cf,db)
 	else:
 		printM("creating index")
 		db = createIndex(fl)

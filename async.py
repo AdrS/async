@@ -15,6 +15,7 @@ file '.sync_pattern' in SOURCE and if that is not found, all files will
 Options:
  -i ..., --index=...	specify name of file that stores file information
  -p ..., --pattern=...	specify name of file that has patterns to follow
+ -n, --nocopy	do not copy files, only update/create index + show results
  -h, --help		show this help message
  -v, --verbose		explain what is being done
  -s			show a summary of program results
@@ -22,7 +23,7 @@ Options:
 """
 __author__ = "Adrian Stoll"
 __date__ = "Mon Aug 11 13:57:00 2013"
-__version__ = "Version 1.1"
+__version__ = "Version 1.2"
 import os, hashlib, re, glob, time, errno, shutil, sys, getopt
 import code
 def logError(message):
@@ -70,6 +71,7 @@ def writeIndex(db, path):
 	'''writes the contents of db to file specified by path
 	in format hash modification time filename. Returns 1 on
 	success, None on failure'''
+	ensureDirectoryExists(os.path.split(fixPath(path))[0])
 	try: f = open(path,'w')
 	except IOError:
 		logError("unable to open \"%s\"" % (path,))
@@ -190,26 +192,31 @@ def copyFilesToDirectory(fl, d):
 def usage():
 	print(__doc__)
 def main(argv):
-	flags, longFlags  = ("i:p:hvsr", ["index=","pattern=","help","verbose"])
+	flags, longFlags  = ("i:p:nhvsr", ["index=","pattern=","nocopy","help","verbose"])
 	index, pattern = ("","")
 	global verbose
 	global repress
 	verbose = 0
 	repress = 0
 	summary = 0
+	nocopy = 0
 	sourceDir, destDir = (os.getcwd(),"")
 	pl = []
 	new, modified, removed = (0,0,0)
+	#///////////////////////GET CMD FLAGS + PARAMS///////////////////////
 	try:
 		opts, args = getopt.getopt(argv,flags,longFlags)
 	except getopt.GetoptError:
 		usage()
 		sys.exit(2)
+	#////////////////////FLAGS////////
 	for opt, arg in opts:
 		if opt in ("-i","--index"):
 			index = arg
 		elif opt in ("-p","--pattern"):
 			pattern = arg
+		elif opt in ("-n","--nocopy"):
+			nocopy = 1
 		elif opt in ("-h", "--help"):
 			usage()
 			sys.exit(0)
@@ -220,9 +227,11 @@ def main(argv):
 		elif opt == "-r":
 			repress = 1
 	al = len(args)
-	if al == 0:
-		usage()
-		sys.exit(0)
+	#/////////////////////PARAMS///////
+	if al == 0:		#no destination needed if files will not be copied
+		if not nocopy:
+			usage()
+			sys.exit(0)
 	elif al == 1:
 		destDir = args[0]
 	elif al == 2:
@@ -236,13 +245,14 @@ def main(argv):
 		sys.exit(2)
 	sourceDir = fixPath(sourceDir)
 	destDir = fixPath(destDir)
-	if not destDir:
-		logError("no destination specified... aborting")
-		sys.exit(2)
-	elif destDir == sourceDir:
-		logError("source and destination directory cannot be the same")
-		sys.exit(2)
-		
+	if not nocopy:		#no destination needed if files will not be copied
+		if not destDir:
+			logError("no destination specified... aborting")
+			sys.exit(2)
+		elif destDir == sourceDir:
+			logError("source and destination directory cannot be the same")
+			sys.exit(2)
+	#//////////////////////get patterns, list of mathcing files...
 	os.chdir(sourceDir)
 	if not pattern: pattern = ".sync_pattern"
 	pl = readPatternList(pattern)
@@ -251,6 +261,7 @@ def main(argv):
 	if not fl:
 		printM("no files mathcing pattern(s)")
 		sys.exit()
+	#////////////////////deal with index+find modified files
 	if not index:
 		index = os.path.join(destDir,".sync_index")
 	db = readIndex(index)
@@ -267,15 +278,19 @@ def main(argv):
 		db = createIndex(fl)
 		cf = fl
 		new = len(fl)
+	#//////////////////wrap up
 	if len(cf) == 0:
 		if summary or verbose:
-			print("no modified or added files")
+			print("%d new, %d modified, %d removed (will keep in index)" % (new,modified,removed))
 		sys.exit()
-	printM("copying files")
-	numC = copyFilesToDirectory(cf,destDir)
+	if not nocopy:
+		printM("copying files")
+		numC = copyFilesToDirectory(cf,destDir)
+	else:
+		numC = 0
 	if summary or verbose:
 		print("%d new, %d modified, %d removed (will keep in index)" % (new,modified,removed))
-		print("%d/%d copied" % (numC,new+modified))
+		print("%d/%d copied%s" % (numC,new+modified,nocopy and " (no copy mode, so files not copied)" or ""))
 	printM("writing index")
 	writeIndex(db,index)
 if __name__ == "__main__":

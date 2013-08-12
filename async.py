@@ -4,7 +4,8 @@ Usage: python async.py [OPTIONS] [SOURCE] DESTINATION
 SOURCE that match the pattern. If timestamps of files are different from
 those in the index file, the file is copied to the directory DESTINATION.
   SOURCE defaults to the current working directory.
-  DESTINATION must be specified. Usage is printed if it is not.
+  DESTINATION must be specified, unless in nocopy mode (where it defaults
+to cwd). Usage is printed if it is not.
   If an index file in not given the program will look for the file
 '.sync_index' in DESTINATION. If it is not present all files will be 
 copied and the file will be created.

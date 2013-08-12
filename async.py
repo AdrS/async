@@ -268,7 +268,8 @@ def main(argv):
 		cf = fl
 		new = len(fl)
 	if len(cf) == 0:
-		printM("no modified or added files")
+		if summary or verbose:
+			print("no modified or added files")
 		sys.exit()
 	printM("copying files")
 	numC = copyFilesToDirectory(cf,destDir)

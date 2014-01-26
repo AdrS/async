@@ -32,7 +32,13 @@ def logError(message):
 		sys.stderr.write("Error: %s\n" % (message,))
 def printM(message):
 	if verbose:
-		sys.stdout.write("%s\n" % message)
+		try:
+			utf8stdout = open(1,'w', encoding='utf-8', closefd=False) #fd 1 is stdout
+		except IOError:
+			logError("could not write to stdout")
+			return None
+		print("%s" % message, file=utf8stdout)
+		utf8stdout.flush()
 def removeBashComment(s):
 	'Takes a string and returns a string with bash comments removed'
 	if '#' in s: return s[:s.index('#')].strip()
@@ -139,6 +145,7 @@ def findChangedFiles(fileList,index):
 				modified += 1
 		else:
 			changed.append(f)
+			printM("new/modified %s" % (f,))
 			new += 1
 	return (changed,new,modified,len(list(index.keys())) + new - len(fileList))
 def readPatternList(file):
@@ -180,6 +187,7 @@ def copyFilesToDirectory(fl, d):
 		logError("could not ensure destination \"%s\" exists." % d)
 		return None
 	for f in fl:
+		printM("copying %s" % (f,))
 		if os.path.isdir(f): continue #ignore directories
 		e = os.path.join(d, os.path.split(f)[0])
 		try: ensureDirectoryExists(e)

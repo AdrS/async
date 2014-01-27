@@ -25,7 +25,7 @@ Options:
 __author__ = "Adrian Stoll"
 __date__ = "Mon Aug 11 13:57:00 2013"
 __version__ = "Version 1.2"
-import os, hashlib, re, glob, time, errno, shutil, sys, getopt
+import os, hashlib, re, glob, time, errno, shutil, sys, getopt, fnmatch
 import code
 def logError(message):
 	if not repress:
@@ -82,7 +82,7 @@ def writeIndex(db, path):
 	try: f = open(path,'w')
 	except IOError:
 		logError("unable to open \"%s\"" % (path,))
-		return None 
+		return None
 	for e in list(db.items()):
 		try: f.write("%s %s %s\n" % (e[1][0], e[1][1], e[0]))
 		except IOError: logError("unable to write entry")
@@ -149,23 +149,37 @@ def findChangedFiles(fileList,index):
 			new += 1
 	return (changed,new,modified,len(list(index.keys())) + new - len(fileList))
 def readPatternList(file):
-	'''read in file with list of patterns (think git ignore)
+	'''read in file with list of patterns (think reverse git ignore)
 	and returns a list of these patterns or None if file nonexistant'''
 	try: f = open(fixPath(file),'r')
 	except IOError: return None
 	try: s = f.read()
 	except IOError: return None
-	return [i for i in [removeBashComment(l) for l in s.split('\n')] if i] 
+	#remove comment, ensure that path seperators are valid for os
+	return [i.replace('\\','/').replace('/',os.sep) for i in [removeBashComment(l) for l in s.split('\n')] if i]
 def getFileList(patterns):
 	'''Takes a list of patterns and returns list of files that match and are in 
 	cwd or any of its subdirectories. The list of files returned uses relative paths.'''
+	#putting a ! in front of the pattern negates it
 	files = []
 	ret = {}
+	exceptions = []
+	skipFile = False
 	for p in patterns:
-		files.extend(glob.glob(fixPath(p)))
+		if p[0] == '!':			#exception to matching patterns get kept till later
+			exceptions.append(fixPath(p[1:]))
+		else:
+			files.extend(glob.glob(fixPath(p)))
 	cwd = fixPath(os.getcwd())
 	for f in files:
 		f = fixPath(f)
+		skipFile = False
+		for e in exceptions:	#check if filename matches any exceptions
+			if fnmatch.fnmatch(f,e):
+				skipFile = True	#skip file if it matches exception
+				printM("ignoring %s" % f[len(cwd)+1:])
+				break
+		if skipFile: continue
 		if not inDirectory(f,cwd):
 			logError("file \"%s\" is not in directory \"%s\
 				\"" % (f,cwd))
@@ -175,7 +189,9 @@ def getFileList(patterns):
 			ret[f[len(cwd)+1:]] = 1
 		#using dictionary prevents duplicate entries
 		#convert from absolute to relative path when putting in dictionary
-	return list(ret.keys())
+	files = list(ret.keys())
+	files.sort()
+	return files
 def copyFilesToDirectory(fl, d):
 	'''takes a list of file and copies them to the directory specified.
 	metadata, such as modification time is preserved (mostly). Returns
